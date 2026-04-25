@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>IOKitPersonalities</key>
+	<dict>
+		<key>GVM2TVDriver</key>
+		<dict>
+			<key>CFBundleIdentifier</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			<key>CFBundleIdentifierKernel</key>
+			<string>com.apple.kpi.iokit</string>
+			<key>IOClass</key>
+			<string>IOUserService</string>
+			<key>IOProviderClass</key>
+			<string>IOUSBHostInterface</string>
+			<key>IOUserClass</key>
+			<string>GVM2TVDriver</string>
+			<key>IOUserServerName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			<!-- USB Device Matching: I-O DATA GV-M2TV -->
+			<key>idVendor</key>
+			<integer>1211</integer>
+			<key>idProduct</key>
+			<integer>1338</integer>
+			<key>bInterfaceNumber</key>
+			<integer>0</integer>
+			<key>bConfigurationValue</key>
+			<integer>1</integer>
+		</dict>
+	</dict>
+	<key>OSBundleUsageDescription</key>
+	<string>GV-M2TV ISDB-T TV Tuner Driver</string>
+
+	<!-- UserClient Properties (referenced by GVM2TVDriver::NewUserClient) -->
+	<key>UserClientProperties</key>
+	<dict>
+		<key>IOClass</key>
+		<string>GVM2TVUserClient</string>
+		<key>IOUserClass</key>
+		<string>GVM2TVUserClient</string>
+	</dict>
+</dict>
+</plist>

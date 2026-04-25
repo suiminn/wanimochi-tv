@@ -1,0 +1,42 @@
+/*
+ * GVM2TVUserClient.iig - IOUserClient for GV-M2TV companion app communication
+ *
+ * Provides ExternalMethod dispatch and shared memory for TS stream data.
+ */
+
+#ifndef GVM2TVUserClient_h
+#define GVM2TVUserClient_h
+
+#include <Availability.h>
+#include <DriverKit/IOUserClient.iig>
+
+class GVM2TVUSBTransport;
+class GVM2TVTuner;
+class GVM2TVStreamEngine;
+
+class GVM2TVUserClient : public IOUserClient
+{
+public:
+    virtual bool init() override;
+    virtual void free() override;
+
+    virtual kern_return_t Start(IOService *provider) override;
+    virtual kern_return_t Stop(IOService *provider) override;
+
+    virtual kern_return_t ExternalMethod(uint64_t selector,
+                                          IOUserClientMethodArguments *arguments,
+                                          const IOUserClientMethodDispatch *dispatch,
+                                          OSObject *target,
+                                          void *reference) override;
+
+    virtual kern_return_t CopyClientMemoryForType(uint64_t type,
+                                                    uint64_t *options,
+                                                    IOMemoryDescriptor **memory) override;
+
+    /* C++-only methods (not dispatched via IIG) */
+    void setTransport(GVM2TVUSBTransport *transport) LOCALONLY;
+    void setTuner(GVM2TVTuner *tuner) LOCALONLY;
+    void setStreamEngine(GVM2TVStreamEngine *engine) LOCALONLY;
+};
+
+#endif /* GVM2TVUserClient_h */
