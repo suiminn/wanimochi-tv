@@ -347,6 +347,10 @@ class DriverClient {
         try regWrite(reg: REG_IRQ_STATUS, data: [0x07, 0xFC])
     }
 
+    func forceReset() throws {
+        try sendApiCommand([0x00, 0x00, 0x0F, 0x00, 0x00, 0x00])
+    }
+
     func bootTrigger() throws {
         try regWrite(reg: REG_BOOT_TRIG, data: [0x00, 0x04])
     }
@@ -540,9 +544,12 @@ enum GVM2TVError: LocalizedError {
     case openFailed(kern_return_t)
     case iokitError(kern_return_t)
     case invalidFirmware
+    case firmwareNotFound(String)
     case authenticationFailed
     case bcasError(String)
     case noContentsKey
+    case unexpectedState(UInt16)
+    case recoveryFailed(UInt16)
 
     var errorDescription: String? {
         switch self {
@@ -554,12 +561,18 @@ enum GVM2TVError: LocalizedError {
             return "IOKit error: 0x\(String(code, radix: 16))"
         case .invalidFirmware:
             return "Invalid firmware file"
+        case .firmwareNotFound(let name):
+            return "\(name).bin not found"
         case .authenticationFailed:
             return "Certificate authentication failed"
         case .bcasError(let msg):
             return "B-CAS error: \(msg)"
         case .noContentsKey:
             return "No Contents Key available"
+        case .unexpectedState(let state):
+            return "Unexpected device state: 0x\(String(format: "%04x", state))"
+        case .recoveryFailed(let state):
+            return "Device recovery failed: 0x\(String(format: "%04x", state))"
         }
     }
 }

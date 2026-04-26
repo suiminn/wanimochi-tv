@@ -3,16 +3,40 @@
  */
 
 import SwiftUI
+import AppKit
 
 @main
 struct WanimochiTVApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var deviceController = DeviceController()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(deviceController)
+                .onAppear {
+                    appDelegate.deviceController = deviceController
+                }
         }
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    weak var deviceController: DeviceController?
+    private var isTerminating = false
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !isTerminating, let deviceController else {
+            return .terminateNow
+        }
+
+        isTerminating = true
+        Task { @MainActor in
+            await deviceController.shutdownForQuit()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 }
 
