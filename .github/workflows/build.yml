@@ -29,7 +29,7 @@ jobs:
         run: |
           xcodebuild \
             -project "$GITHUB_WORKSPACE/wanimochi-tv/wanimochi-tv.xcodeproj" \
-            -target "WanimochiTV" \
+            -scheme "WanimochiTV" \
             -configuration Release \
             -destination "generic/platform=macOS" \
             -derivedDataPath "$DERIVED_DATA" \
