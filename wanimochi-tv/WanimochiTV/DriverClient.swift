@@ -317,13 +317,22 @@ class DriverClient {
         return UInt16(buf[0]) << 8 | UInt16(buf[1])
     }
 
-    func waitInterruptReady() throws {
-        for _ in 0..<101 {
-            let buf = try regRead(reg: REG_IRQ_STATUS, length: 2)
-            if buf[1] & 0x04 != 0 { return }
+    func waitInterruptReady(timeoutMS: UInt32 = 5000) throws {
+        var lastStatus: [UInt8] = []
+        let deadline = Date().addingTimeInterval(Double(timeoutMS) / 1000.0)
+
+        repeat {
+            do {
+                let buf = try regRead(reg: REG_IRQ_STATUS, length: 2)
+                lastStatus = buf
+                if buf.count >= 2 && buf[1] & 0x04 != 0 { return }
+            } catch GVM2TVError.iokitError(let code) where code == kIOReturnTimeout {
+                // A transient timeout can happen just after force reset while the device settles.
+            }
             usleep(2000)
-        }
-        throw GVM2TVError.iokitError(kIOReturnTimeout)
+        } while Date() < deadline
+
+        throw GVM2TVError.interruptReadyTimeout(lastStatus)
     }
 
     func clearPipeStall(endpoint: UInt8) throws {
@@ -550,15 +559,16 @@ enum GVM2TVError: LocalizedError {
     case noContentsKey
     case unexpectedState(UInt16)
     case recoveryFailed(UInt16)
+    case interruptReadyTimeout([UInt8])
 
     var errorDescription: String? {
         switch self {
         case .deviceNotFound:
             return "GV-M2TV device not found"
         case .openFailed(let code):
-            return "Failed to open device: 0x\(String(code, radix: 16))"
+            return "Failed to open device: \(Self.formatIOReturn(code))"
         case .iokitError(let code):
-            return "IOKit error: 0x\(String(code, radix: 16))"
+            return "IOKit error: \(Self.formatIOReturn(code))"
         case .invalidFirmware:
             return "Invalid firmware file"
         case .firmwareNotFound(let name):
@@ -573,6 +583,15 @@ enum GVM2TVError: LocalizedError {
             return "Unexpected device state: 0x\(String(format: "%04x", state))"
         case .recoveryFailed(let state):
             return "Device recovery failed: 0x\(String(format: "%04x", state))"
+        case .interruptReadyTimeout(let status):
+            let statusText = status.isEmpty
+                ? "unavailable"
+                : status.map { String(format: "%02x", $0) }.joined(separator: " ")
+            return "Timed out waiting for firmware upload ready (IRQ status: \(statusText))"
         }
+    }
+
+    private static func formatIOReturn(_ code: kern_return_t) -> String {
+        String(format: "0x%08x", UInt32(bitPattern: code))
     }
 }
