@@ -1,0 +1,51 @@
+name: Build WanimochiTV
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: |
+          xcode-select -p
+          xcodebuild -version
+
+      - name: Build unsigned app bundle
+        env:
+          CI_XCCONFIG: ${{ github.workspace }}/.github/xcode/ci-signing.xcconfig
+          DERIVED_DATA: ${{ github.workspace }}/build/DerivedData
+        run: |
+          xcodebuild \
+            -project "$GITHUB_WORKSPACE/wanimochi-tv/wanimochi-tv.xcodeproj" \
+            -target "WanimochiTV" \
+            -configuration Release \
+            -destination "generic/platform=macOS" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -xcconfig "$CI_XCCONFIG" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= \
+            DEVELOPMENT_TEAM= \
+            PROVISIONING_PROFILE_SPECIFIER= \
+            build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: WanimochiTV-Release
+          path: |
+            build/DerivedData/Build/Products/Release/WanimochiTV.app
+            build/DerivedData/Build/Products/Release/dev.sh1ma.wanimochi-tv.dext
+          if-no-files-found: error
