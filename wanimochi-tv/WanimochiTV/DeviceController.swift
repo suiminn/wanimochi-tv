@@ -2,7 +2,7 @@
  * DeviceController.swift - GV-M2TV device state machine orchestration
  *
  * Drives the device lifecycle via direct USB communication:
- * connection → FW upload → auth → B-CAS → tuning → TRC → streaming → HTTP
+ * connection → FW upload → auth → B-CAS → tuning → TRC → streaming → VLCKit
  */
 
 import Foundation
@@ -16,14 +16,15 @@ class DeviceController: ObservableObject {
     @Published var isStreaming: Bool = false
     @Published var selectedChannel: Int = 27
     @Published var lastError: String?
-    @Published var httpURL: String = ""
+    @Published var playerStreamURL: URL?
+    @Published var playbackToken = UUID()
 
     private let client = DriverClient()
     private var aesKey: Data?
     private var secureAuth: SecureAuth?
     private var bcasManager: BCASManager?
     private var streamingEngine: StreamingEngine?
-    private var httpServer: TSHTTPServer?
+    private var directStreamSink: DirectTSStreamSink?
     private var tuner: TunerController?
     private var isShuttingDown = false
 
@@ -243,29 +244,14 @@ class DeviceController: ObservableObject {
             streamingEngine = StreamingEngine(client: client, contentsKey: contentsKey)
             try streamingEngine!.loadTRCFirmware(trcData)
 
-            // Start HTTP server
-            if httpServer == nil {
-                httpServer = TSHTTPServer(port: 8888)
-                httpServer?.onTuneRequest = { [weak self] ch in
-                    guard let self = self else { return }
-                    Task { @MainActor in
-                        self.selectedChannel = ch
-                        await self.changeCh(ch)
-                    }
-                }
-                try httpServer!.start()
-                httpURL = "http://localhost:8888"
-            }
-            httpServer?.currentChannel = selectedChannel
-            httpServer?.signalStrength = signalStrength
-            httpServer?.isStreaming = true
+            // Connect decrypted TS directly to VLCKit through a FIFO.
+            let streamSink = DirectTSStreamSink(channel: selectedChannel)
+            playerStreamURL = try streamSink.prepare()
+            playbackToken = UUID()
+            directStreamSink = streamSink
 
-            // Start ffmpeg transcoder for HLS
-            httpServer?.startFFmpeg()
-
-            // Connect streaming to HTTP server
-            streamingEngine?.onTSData = { [weak self] data in
-                self?.httpServer?.feedTSData(data)
+            streamingEngine?.onTSData = { data in
+                streamSink.write(data)
             }
 
             // Start streaming
@@ -274,12 +260,24 @@ class DeviceController: ObservableObject {
             lastError = nil
 
         } catch {
+            directStreamSink?.close()
+            directStreamSink = nil
+            playerStreamURL = nil
+            playbackToken = UUID()
             lastError = error.localizedDescription
             print("[Tune] Failed: \(error)")
         }
     }
 
     // MARK: - Channel Change
+
+    func playSelectedChannel() async {
+        if isStreaming {
+            await changeCh(selectedChannel)
+        } else {
+            await tuneAndStream()
+        }
+    }
 
     private func changeCh(_ ch: Int) async {
         guard isStreaming else { return }
@@ -312,14 +310,14 @@ class DeviceController: ObservableObject {
             streamingEngine = StreamingEngine(client: client, contentsKey: contentsKey)
             try streamingEngine!.loadTRCFirmware(trcData)
 
-            // 10. Reconnect to HTTP server + restart ffmpeg
-            httpServer?.clearSegments()
-            httpServer?.startFFmpeg()
-            httpServer?.currentChannel = ch
-            httpServer?.signalStrength = signalStrength
+            // 10. Reconnect direct VLCKit stream sink
+            let streamSink = DirectTSStreamSink(channel: ch)
+            playerStreamURL = try streamSink.prepare()
+            playbackToken = UUID()
+            directStreamSink = streamSink
 
-            streamingEngine?.onTSData = { [weak self] data in
-                self?.httpServer?.feedTSData(data)
+            streamingEngine?.onTSData = { data in
+                streamSink.write(data)
             }
             try streamingEngine!.start()
             isStreaming = true
@@ -327,6 +325,10 @@ class DeviceController: ObservableObject {
             print("[ChChange] Channel change to CH\(ch) complete")
 
         } catch {
+            directStreamSink?.close()
+            directStreamSink = nil
+            playerStreamURL = nil
+            playbackToken = UUID()
             lastError = "Channel change failed: \(error.localizedDescription)"
             print("[ChChange] Failed: \(error)")
         }
@@ -359,8 +361,8 @@ class DeviceController: ObservableObject {
 
         streamingEngine?.stop()
         streamingEngine = nil
-        httpServer?.stop()
-        httpServer = nil
+        directStreamSink?.close()
+        directStreamSink = nil
         tuner = nil
         bcasManager = nil
         secureAuth = nil
@@ -369,6 +371,8 @@ class DeviceController: ObservableObject {
         signalLocked = false
         signalStrength = 0
         isStreaming = false
+        playerStreamURL = nil
+        playbackToken = UUID()
         isConnected = false
         deviceStateText = "Disconnected"
         isShuttingDown = false
@@ -379,9 +383,11 @@ class DeviceController: ObservableObject {
         let shouldStopDevice = streamingEngine != nil || isStreaming
         streamingEngine?.stop()
         streamingEngine = nil
-        httpServer?.stopFFmpeg()
-        httpServer?.isStreaming = false
+        directStreamSink?.close()
+        directStreamSink = nil
         isStreaming = false
+        playerStreamURL = nil
+        playbackToken = UUID()
 
         guard client.isConnected else { return }
 

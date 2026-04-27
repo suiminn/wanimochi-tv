@@ -44,76 +44,109 @@ struct ContentView: View {
     @EnvironmentObject var controller: DeviceController
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text("WanimochiTV")
-                .font(.largeTitle)
+        HStack(spacing: 0) {
+            controlPanel
+                .frame(width: 300)
+                .padding(24)
 
-            HStack {
-                Text("State:")
-                Text(controller.deviceStateText)
-                    .foregroundColor(controller.isConnected ? .green : .red)
-                    .bold()
+            Divider()
+
+            VStack(alignment: .leading, spacing: 14) {
+                VLCStreamPlayerView(
+                    streamURL: controller.playerStreamURL,
+                    playbackToken: controller.playbackToken,
+                    isStreaming: controller.isStreaming
+                )
+
+                if let error = controller.lastError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(3)
+                }
             }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .frame(minWidth: 980, minHeight: 620)
+    }
+
+    private var controlPanel: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("WanimochiTV")
+                .font(.title)
+                .bold()
+
+            statusRow
 
             if controller.isConnected {
-                // Initialize button
-                Button("Initialize (FW + Auth + B-CAS)") {
+                Button {
                     Task { await controller.initialize() }
+                } label: {
+                    Label("Initialize", systemImage: "checkmark.seal")
                 }
+                .buttonStyle(.borderedProminent)
 
                 Divider()
 
-                // Channel + Tune
-                HStack {
-                    Text("Channel:")
-                    TextField("13-62", value: $controller.selectedChannel, format: .number)
-                        .frame(width: 60)
-                    Button("Tune & Stream") {
-                        Task { await controller.tuneAndStream() }
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Channel")
+                        .font(.headline)
+
+                    HStack {
+                        TextField("13-62", value: $controller.selectedChannel, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 74)
+
+                        Stepper("", value: $controller.selectedChannel, in: 13...62)
+                            .labelsHidden()
                     }
-                    .disabled(controller.isStreaming)
+
+                    Button {
+                        Task { await controller.playSelectedChannel() }
+                    } label: {
+                        Label(controller.isStreaming ? "Change Channel" : "Tune & Play", systemImage: "play.tv")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(controller.selectedChannel < 13 || controller.selectedChannel > 62)
                 }
 
                 if controller.signalLocked {
-                    Text("Signal: \(controller.signalStrength)/100")
-                        .foregroundColor(.green)
+                    Label("Signal \(controller.signalStrength)/100", systemImage: "antenna.radiowaves.left.and.right")
+                        .foregroundStyle(.green)
                 }
 
                 if controller.isStreaming {
-                    VStack(spacing: 8) {
-                        Text("Streaming")
-                            .foregroundColor(.green).bold()
-                        Text(controller.httpURL + "/stream")
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                        Text("Open in VLC or ffplay")
-                            .font(.caption).foregroundColor(.gray)
-
-                        Link("Open Web Player", destination: URL(string: controller.httpURL)!)
-                            .font(.caption)
-
-                        Button("Stop") {
-                            Task { await controller.stopStreaming() }
-                        }
+                    Button {
+                        Task { await controller.stopStreaming() }
+                    } label: {
+                        Label("Stop", systemImage: "stop.fill")
                     }
-                    .padding()
-                    .background(Color.green.opacity(0.1))
-                    .cornerRadius(8)
+                    .buttonStyle(.bordered)
                 }
             } else {
-                Button("Connect") {
+                Button {
                     Task { await controller.connect() }
+                } label: {
+                    Label("Connect", systemImage: "cable.connector")
                 }
+                .buttonStyle(.borderedProminent)
             }
 
-            if let error = controller.lastError {
-                Text(error)
-                    .foregroundColor(.red)
-                    .font(.caption)
-                    .multilineTextAlignment(.center)
-            }
+            Spacer()
         }
-        .padding(30)
-        .frame(minWidth: 450, minHeight: 400)
+    }
+
+    private var statusRow: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(controller.isConnected ? Color.green : Color.red)
+                .frame(width: 9, height: 9)
+
+            Text(controller.deviceStateText)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
     }
 }

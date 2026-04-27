@@ -22,13 +22,17 @@ jobs:
           xcode-select -p
           xcodebuild -version
 
+      - name: Install CocoaPods dependencies
+        working-directory: wanimochi-tv
+        run: pod install
+
       - name: Build unsigned app bundle
         env:
           CI_XCCONFIG: ${{ github.workspace }}/.github/xcode/ci-signing.xcconfig
           DERIVED_DATA: ${{ github.workspace }}/build/DerivedData
         run: |
           xcodebuild \
-            -project "$GITHUB_WORKSPACE/wanimochi-tv/wanimochi-tv.xcodeproj" \
+            -workspace "$GITHUB_WORKSPACE/wanimochi-tv/wanimochi-tv.xcworkspace" \
             -scheme "WanimochiTV" \
             -configuration Release \
             -destination "generic/platform=macOS" \
