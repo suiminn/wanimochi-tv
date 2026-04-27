@@ -77,15 +77,14 @@ class BCASManager {
         if intResp.count >= 50 {
             systemKey = Data(intResp[10..<42])
             initCBC = Data(intResp[42..<50])
-            print("[BCAS] System key: \(systemKey!.map { String(format: "%02x", $0) }.joined())")
-            print("[BCAS] CBC init: \(initCBC!.map { String(format: "%02x", $0) }.joined())")
+            print("[BCAS] INT parameters received")
             if intResp.count >= 58 {
                 var id: Int64 = 0
                 for i in 0..<8 {
                     id = (id << 8) | Int64(intResp[50 + i])
                 }
                 cardId = id
-                print("[BCAS] Card ID: \(cardId)")
+                print("[BCAS] Card ID received")
             }
         }
     }
@@ -120,6 +119,9 @@ class BCASManager {
 
     private func sendBCASCommand(apdu: Data) throws {
         var buf = Data(count: 0x110)
+        guard apdu.count <= buf.count - 4 else {
+            throw GVM2TVError.bcasError("APDU too large")
+        }
 
         // Header
         buf[0] = 0xFF; buf[1] = 0x00
@@ -141,12 +143,15 @@ class BCASManager {
 
         // AES encrypt
         let encLen = (totalLen + 15) & ~15
+        guard encLen <= buf.count else {
+            throw GVM2TVError.bcasError("encoded APDU too large")
+        }
 
-        // Step 1: byte-swap enc_len words
+        // Step 1: byte-swap the encoded bytes as 16-bit words.
         var temp = Data(count: 0x110)
-        for i in 0..<encLen {
-            temp[i * 2] = buf[i * 2 + 1]
-            temp[i * 2 + 1] = buf[i * 2]
+        for i in stride(from: 0, to: encLen, by: 2) {
+            temp[i] = buf[i + 1]
+            temp[i + 1] = buf[i]
         }
 
         // Step 2: AES-CBC encrypt enc_len bytes
@@ -171,14 +176,14 @@ class BCASManager {
         // Step 3: copy cipher → temp
         temp.replaceSubrange(0..<encLen, with: cipher.prefix(encLen))
 
-        // Step 4: byte-swap 136 words temp → buf
-        for i in 0..<0x88 {
-            buf[i * 2] = temp[i * 2 + 1]
-            buf[i * 2 + 1] = temp[i * 2]
+        // Step 4: byte-swap encrypted bytes back into the wire buffer.
+        for i in stride(from: 0, to: encLen, by: 2) {
+            buf[i] = temp[i + 1]
+            buf[i + 1] = temp[i]
         }
 
-        // Step 5: rolw enc_len words
-        swap16Buf(&buf, count: encLen * 2)
+        // Step 5: final 16-bit wire-order transform.
+        swap16Buf(&buf, count: encLen)
 
         // Step 6: write to 0x8219C
         try client.bcasRegWrite(reg: 0x8219C, data: buf.prefix(encLen))
@@ -255,8 +260,7 @@ class BCASManager {
 
         // Extract Contents Key from decoded response at offset 16
         contentsKey = Data(output[16..<32])
-        print("[BCAS] retainSecureEP decoded resp[0..32]: \(output[0..<32].map { String(format: "%02x", $0) }.joined())")
-        print("[BCAS] Contents Key: \(contentsKey!.map { String(format: "%02x", $0) }.joined())")
+        print("[BCAS] Contents Key acquired")
     }
 
     private func waitBCASReady() throws {

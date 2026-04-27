@@ -140,7 +140,7 @@ class DeviceController: ObservableObject {
         print("[Init] Certificate authentication...")
         self.secureAuth = SecureAuth(client: client)
         self.aesKey = try secureAuth!.performAuthentication()
-        print("[Init] AES key derived: \(aesKey!.map { String(format: "%02x", $0) }.joined())")
+        print("[Init] AES session key derived")
 
         // Send IDLE command (cmd[2]=0x01)
         print("[Init] Sending IDLE command...")
@@ -205,9 +205,6 @@ class DeviceController: ObservableObject {
         try bcasManager?.sendIDICommand()
         try bcasManager?.retainSecureEP()
 
-        if let ck = bcasManager?.contentsKey {
-            print("[BCAS] Contents Key: \(ck.map { String(format: "%02x", $0) }.joined())")
-        }
         print("[BCAS] B-CAS initialization complete")
     }
 

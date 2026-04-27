@@ -146,12 +146,6 @@ class StreamingEngine {
         var outputBatch = Data()
         var logCounter = 0
 
-        // Debug: save raw TS to file for analysis
-        let debugPath = "/tmp/wanimochi_debug.ts"
-        FileManager.default.createFile(atPath: debugPath, contents: nil)
-        let debugFile = FileHandle(forWritingAtPath: debugPath)
-        print("[Stream] Debug TS output: \(debugPath)")
-
         while running {
             do {
                 let rawData = try client.bulkRead(length: 4096)
@@ -185,9 +179,8 @@ class StreamingEngine {
                     offset += 188
                 }
 
-                // Send batch to callback + debug file
+                // Send batch to callback.
                 if !outputBatch.isEmpty {
-                    debugFile?.write(outputBatch)
                     onTSData?(outputBatch)
                     outputBatch = Data()
                 }

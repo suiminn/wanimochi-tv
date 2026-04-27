@@ -178,37 +178,31 @@ class DriverClient {
         }
         let pipeIndex = try findPipeIndex(for: 0x83)
 
-        // Run blocking ReadPipe on background thread with timeout
-        var result: [UInt8] = []
-        var readError: kern_return_t = kIOReturnSuccess
-        let semaphore = DispatchSemaphore(value: 0)
+        var buf = [UInt8](repeating: 0, count: 64)
+        var size: UInt32 = 64
+        let kr = iface.pointee.pointee.ReadPipeTO(
+            iface,
+            pipeIndex,
+            &buf,
+            &size,
+            timeout,
+            timeout
+        )
 
-        let ifaceCopy = iface
-        DispatchQueue.global(qos: .userInitiated).async {
-            var buf = [UInt8](repeating: 0, count: 64)
-            var size: UInt32 = 64
-            let kr = ifaceCopy.pointee.pointee.ReadPipe(ifaceCopy, pipeIndex, &buf, &size)
-            if kr == kIOReturnSuccess && size > 0 {
-                result = Array(buf[0..<Int(size)])
-            } else {
-                readError = kr
-            }
-            semaphore.signal()
-        }
-
-        let waitResult = semaphore.wait(timeout: .now() + .milliseconds(Int(timeout)))
-        if waitResult == .timedOut {
-            // Abort the pipe to unblock ReadPipe
-            iface.pointee.pointee.AbortPipe(iface, pipeIndex)
-            print("[USB] EP3 read timeout")
+        if kr == kIOReturnTimeout {
             return []
         }
 
+        guard kr == kIOReturnSuccess else {
+            print("[USB] EP3 ReadPipe error: 0x\(String(kr, radix: 16))")
+            throw GVM2TVError.iokitError(kr)
+        }
+
+        let result = Array(buf[0..<Int(size)])
         if !result.isEmpty {
             print("[USB] EP3 read: \(result.count) bytes: \(result.map { String(format: "%02x", $0) }.joined(separator: " "))")
-        } else if readError != kIOReturnSuccess {
-            print("[USB] EP3 ReadPipe error: 0x\(String(readError, radix: 16))")
         }
+
         return result
     }
 
@@ -281,33 +275,26 @@ class DriverClient {
         }
         let pipeIndex = try findPipeIndex(for: 0x81)
 
-        var result: [UInt8] = []
-        var readError: kern_return_t = kIOReturnSuccess
-        let semaphore = DispatchSemaphore(value: 0)
+        var buf = [UInt8](repeating: 0, count: length)
+        var size = UInt32(length)
+        let kr = iface.pointee.pointee.ReadPipeTO(
+            iface,
+            pipeIndex,
+            &buf,
+            &size,
+            timeout,
+            timeout
+        )
 
-        let ifaceCopy = iface
-        let readLen = length
-        DispatchQueue.global(qos: .userInitiated).async {
-            var buf = [UInt8](repeating: 0, count: readLen)
-            var size = UInt32(readLen)
-            let kr = ifaceCopy.pointee.pointee.ReadPipe(ifaceCopy, pipeIndex, &buf, &size)
-            if kr == kIOReturnSuccess && size > 0 {
-                result = Array(buf[0..<Int(size)])
-            } else {
-                readError = kr
-            }
-            semaphore.signal()
-        }
-
-        let waitResult = semaphore.wait(timeout: .now() + .milliseconds(Int(timeout)))
-        if waitResult == .timedOut {
-            iface.pointee.pointee.AbortPipe(iface, pipeIndex)
+        if kr == kIOReturnTimeout {
             return []
         }
-        if readError != kIOReturnSuccess {
-            return []
+
+        guard kr == kIOReturnSuccess else {
+            throw GVM2TVError.iokitError(kr)
         }
-        return result
+
+        return Array(buf[0..<Int(size)])
     }
 
     // MARK: - High-Level Helpers

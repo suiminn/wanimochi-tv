@@ -13,6 +13,7 @@
 
 struct GVM2TVRingBufferHeader;
 class GVM2TVUSBTransport;
+class IODispatchQueue;
 
 class GVM2TVStreamEngine {
 public:
@@ -43,12 +44,18 @@ public:
 
 private:
     GVM2TVUSBTransport   *transport_;
+    IODispatchQueue      *readQueue_;
     GVM2TVRingBufferHeader *ringHeader_;
     uint8_t              *ringData_;
     uint64_t              ringSize_;
     volatile bool         running_;
+    volatile bool         readerScheduled_;
+    volatile bool         readerActive_;
     uint64_t              totalBytes_;
     uint64_t              totalPackets_;
+
+    static void readLoopThunk(void *context);
+    void readLoop();
 
     /* Write data to the ring buffer */
     void writeToRingBuffer(const uint8_t *data, uint32_t len);
